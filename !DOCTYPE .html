@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>圓周運動互動動畫</title>
+<style>
+  body {
+    background: #111;
+    color: #eee;
+    text-align: center;
+    font-family: "Microsoft JhengHei", sans-serif;
+  }
+  canvas {
+    background: #222;
+    border: 2px solid #444;
+    border-radius: 10px;
+    margin-top: 20px;
+  }
+  .controls {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap; /* 允許換行以適應小螢幕 */
+  }
+  .control-group {
+    margin: 5px 15px;
+  }
+  label {
+    display: block; /* 讓標籤和滑塊分開一行 */
+    margin-bottom: 5px;
+    text-align: left;
+  }
+  input[type=range] {
+    width: 150px;
+    vertical-align: middle;
+  }
+  button {
+    background-color: #008CBA;
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-left: 10px;
+    height: 36px; /* 統一高度 */
+  }
+  button:hover {
+    background-color: #007399;
+  }
+</style>
+</head>
+<body>
+<h2>圓周運動互動動畫</h2> <canvas id="circleCanvas" width="500" height="500"></canvas>
+<div class="controls">
+  <div class="control-group">
+    <label>半徑 R (<span id="radiusValue">1.50</span> m):</label>
+    <input type="range" id="radiusSlider" min="0.5" max="2.0" step="0.05" value="1.5">
+  </div>
+  <div class="control-group">
+    <label>速度 v (<span id="speedValue">2.00</span> m/s):</label>
+    <input type="range" id="speedSlider" min="0.5" max="5.0" step="0.1" value="2.0">
+  </div>
+  <button id="toggleButton">⏸ 暫停</button>
+</div>
+
+<script>
+const canvas = document.getElementById("circleCanvas");
+const ctx = canvas.getContext("2d");
+
+const centerX = canvas.width / 2;
+const centerY = canvas.height / 2;
+
+/**
+ * 集中管理所有動畫參數和狀態
+ */
+const state = {
+  radius_m: 1.5,     // 半徑（公尺）
+  speed_mps: 2.0,    // 速度（公尺/秒）
+  isPaused: false,
+  angle: 0,          // 弧度
+  // 顯示和渲染相關
+  scale: 100,        // 1 公尺 = 100 畫布像素
+  vScale: 20,        // 速度箭頭視覺縮放
+  aScale: 4,         // 加速度箭頭視覺縮放
+};
+
+let lastTime = 0; // 用於計算幀間時間差
+
+/**
+ * 繪製箭頭的通用函式。
+ * @param {number} fromx 起點 X
+ * @param {number} fromy 起點 Y
+ * @param {number} tox 終點 X
+ * @param {number} toy 終點 Y
+ * @param {string} color 箭頭顏色
+ */
+function drawArrow(fromx, fromy, tox, toy, color) {
+  const headlen = 10;
+  const dx = tox - fromx;
+  const dy = toy - fromy;
+  const angle = Math.atan2(dy, dx);
+  
+  // 繪製箭身
+  ctx.beginPath();
+  ctx.moveTo(fromx, fromy);
+  ctx.lineTo(tox, toy);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 繪製箭頭
+  ctx.beginPath();
+  ctx.moveTo(tox, toy);
+  ctx.lineTo(
+    tox - headlen * Math.cos(angle - Math.PI / 6),
+    toy - headlen * Math.sin(angle - Math.PI / 6)
+  );
+  ctx.lineTo(
+    tox - headlen * Math.cos(angle + Math.PI / 6),
+    toy - headlen * Math.sin(angle + Math.PI / 6)
+  );
+  ctx.closePath(); // 封閉三角形
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+/**
+ * 繪製所有元素的函式
+ * @param {number} deltaTime 距離上次繪製的時間差 (秒)
+ */
+function draw(timestamp) {
+  // 計算幀間時間差 (秒)
+  const deltaTime = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 1. 運動參數計算
+  const { radius_m, speed_mps, angle, scale, vScale, aScale, isPaused } = state;
+  
+  // 物理計算
+  const angularSpeed = speed_mps / radius_m;      // 角速度 ω (rad/s)
+  const acc = (speed_mps ** 2) / radius_m;        // 向心加速度 a (m/s²)
+  const r_px = radius_m * scale;                  // 畫布半徑 (px)
+
+  // 更新角度 (基於時間差，確保流暢且穩定)
+  if (!isPaused) {
+    // 角度變化 = 角速度 * 時間差
+    // 加上 3.0 的因子是為了讓動畫在視覺上看起來更快/更舒服
+    state.angle += angularSpeed * deltaTime * 3.0; 
+  }
+  
+  // 計算當前位置
+  const x = centerX + r_px * Math.cos(state.angle);
+  const y = centerY + r_px * Math.sin(state.angle);
+
+  // 2. 繪製元素
+  
+  // 圓軌跡 (半徑要用 r_px)
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, r_px, 0, Math.PI * 2);
+  ctx.strokeStyle = "#555";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 圓心
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 4, 0, Math.PI * 2); // 縮小圓心大小
+  ctx.fillStyle = "#FFD700"; // 使用金色
+  ctx.fill();
+
+  // 小球
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2); // 縮小小球大小
+  ctx.fillStyle = "#00BFFF"; // 使用深一點的青色
+  ctx.shadowColor = "#00BFFF";
+  ctx.shadowBlur = 15; // 添加光暈效果
+  ctx.fill();
+  ctx.shadowBlur = 0; // 清除光暈
+
+  // 半徑向量
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = "#777";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 3. 繪製向量箭頭
+  
+  // 速度箭頭 (切線方向)
+  const vx = -Math.sin(state.angle) * speed_mps * vScale;
+  const vy = Math.cos(state.angle) * speed_mps * vScale;
+  drawArrow(x, y, x + vx, y + vy, "lime");
+
+  // 加速度箭頭 (指向圓心)
+  // 加速度向量 = 向心加速度 * 單位半徑向量 (單位半徑向量 = (中心 - 位置) / 半徑長度)
+  const ax_dir = (centerX - x) / r_px; // x 方向單位向量
+  const ay_dir = (centerY - y) / r_px; // y 方向單位向量
+  drawArrow(
+    x, y, 
+    x + ax_dir * acc * aScale, 
+    y + ay_dir * acc * aScale, 
+    "orange"
+  );
+
+  // 4. 顯示參數
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 16px Microsoft JhengHei";
+  ctx.textAlign = "left";
+  
+  const paramX = 20;
+  let paramY = 30;
+
+  ctx.fillText(`物理參數:`, paramX, paramY);
+  paramY += 25;
+  
+  ctx.font = "14px Microsoft JhengHei";
+  ctx.fillText(`半徑 R = ${radius_m.toFixed(2)} m`, paramX, paramY);
+  paramY += 20;
+  
+  ctx.fillText(`速度 v = ${speed_mps.toFixed(2)} m/s`, paramX, paramY);
+  paramY += 20;
+
+  // 使用 Unicode 字符 ω
+  ctx.fillText(`角速度 ω = ${angularSpeed.toFixed(2)} rad/s`, paramX, paramY);
+  paramY += 20;
+  
+  ctx.fillText(`向心加速度 a = ${acc.toFixed(2)} m/s²`, paramX, paramY);
+
+
+  // 5. 循環呼叫
+  requestAnimationFrame(draw);
+}
+
+/**
+ * 初始化控制項的事件監聽
+ */
+function setupControls() {
+  const radiusSlider = document.getElementById("radiusSlider");
+  const speedSlider = document.getElementById("speedSlider");
+  const toggleButton = document.getElementById("toggleButton");
+  const radiusValueSpan = document.getElementById("radiusValue");
+  const speedValueSpan = document.getElementById("speedValue");
+
+  radiusSlider.addEventListener("input", (e) => {
+    state.radius_m = parseFloat(e.target.value);
+    radiusValueSpan.textContent = state.radius_m.toFixed(2);
+  });
+  // 初始顯示值
+  radiusValueSpan.textContent = state.radius_m.toFixed(2);
+
+  speedSlider.addEventListener("input", (e) => {
+    state.speed_mps = parseFloat(e.target.value);
+    speedValueSpan.textContent = state.speed_mps.toFixed(2);
+  });
+  // 初始顯示值
+  speedValueSpan.textContent = state.speed_mps.toFixed(2);
+  
+  toggleButton.addEventListener("click", () => {
+    state.isPaused = !state.isPaused;
+    toggleButton.textContent = state.isPaused ? "▶ 繼續" : "⏸ 暫停";
+  });
+}
+
+// === 程式啟動點 ===
+setupControls();
+requestAnimationFrame(draw); 
+</script>
+</body>
+</html>
